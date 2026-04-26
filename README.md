@@ -1,3 +1,4 @@
+See my readme at ../README_raycast.md
 <div align="center">
   <a href="https://raycast.com">
     <img src="./images/logo.png" height="250px">
@@ -160,9 +161,44 @@ We also append `/usr/local/bin` to `$PATH` variable so you can use your local sh
 
 **👮‍♂️ We only allow Script Commands that run in a non-login shell in this repository as agreed on in our [contribution guidelines](https://github.com/raycast/script-commands/blob/master/CONTRIBUTING.md).**
 
-## Troubleshooting
+## Notes / Learnings (real-world debugging)
 
-If a script doesn't appear in the commands list, make sure these requirements are met:
+### Node + Raycast + clipboard piping caveat
+
+When debugging a URL encoder Script Command we found:
+
+- `pbpaste` can successfully read clipboard content in Raycast (e.g. `CLIP_BYTES > 0`).
+- But piping that content into Node (e.g. `printf %s "$CLIP" | node ...`) may result in **empty stdin inside Node** in the Raycast Script Command runtime.
+  - Symptom: Node prints `stdinBytes: 0` even though the shell string length is > 0.
+
+**Workaround:** avoid stdin piping into Node. Pass the clipboard text via an environment variable and read `process.env.*` inside Node:
+
+````bash
+CLIP="$(pbpaste -pboard general)"
+ENCODED="$(CLIP_INPUT="$CLIP" node - <<'NODE'
+const input = (process.env.CLIP_INPUT || "").trim();
+process.stdout.write(encodeURIComponent(input));
+NODE
+)"
+printf %s "$ENCODED" | pbcopy -pboard general
+````
+
+### Passing flags to Node safely
+
+If you want an argument like `-w` / `--whole`:
+
+- Don’t pass it as a Node CLI option (it can error with `node: bad option: -w`).
+- Instead, run script via stdin and pass the flag as a normal argument:
+
+````bash
+node - "$FLAG" <<'NODE'
+// check process.argv for -w / --whole
+NODE
+````
+
+This keeps Raycast arguments available in `process.argv` without being interpreted as Node runtime flags.
+
+
 * Script file is executable (you can run `file <path to script>` command in terminal to check it). To make the script executable, run: `chmod +x <path to script>`
 * Filename doesn't contain `.template.` string
 * All required metadata parameters are provided. See the table above which parameters are required.
